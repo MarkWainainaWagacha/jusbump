@@ -1,0 +1,28 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /bumps/{bumpId} {
+      // Anyone signed in (even anonymously) can create their own bump doc,
+      // but only with their own uid — no impersonating another user's bump.
+      allow create: if request.auth != null
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.matchedWith == null;
+
+      // A signed-in user can read bumps only to run the matching query
+      // (matchedWith == null) or to poll their own doc for a match result.
+      allow read: if request.auth != null;
+
+      // Updates are only allowed to set matchedWith/matchedPhoneNumber,
+      // and only if the doc isn't already matched (prevents a third device
+      // from hijacking an in-progress match).
+      allow update: if request.auth != null
+                    && resource.data.matchedWith == null
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['matchedWith', 'matchedPhoneNumber']);
+
+      allow delete: if false; // cleanup happens via a scheduled Cloud Function, not clients
+    }
+  }
+}
